@@ -1,0 +1,12 @@
+# Virtual Environments
+.venv/
+
+# IDE settings
+.vscode/
+
+# Python cache files
+__pycache__/
+
+# Training data
+data/
+models/
