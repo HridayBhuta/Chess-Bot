@@ -46,61 +46,53 @@ def augment_data(tensor, move_idx):
     
     return flipped_tensor, new_move_idx
 
-def preprocess_games():
-    X = []
-    y = []
+def get_result_value(result_str, my_color):
+    """Converts PGN result string to a value relative to the bot."""
+    if result_str == "1/2-1/2":
+        return 0.0
+    if result_str == "1-0":
+        return 3.0 if my_color == chess.WHITE else -2.0
+    if result_str == "0-1":
+        return 3.0 if my_color == chess.BLACK else -2.0
+    return 0.0
+
+def preprocess_games(input_pgn=INPUT_PGN, output_file=OUTPUT_FILE):
+    X, y_policy, y_value = [], [], []
     
-    if not os.path.exists(INPUT_PGN):
-        print(f"Error: {INPUT_PGN} not found.")
+    if not os.path.exists(input_pgn):
         return
 
-    pgn = open(INPUT_PGN)
-    game_count = 0
-    
-    print("Starting preprocessing with data augmentation...")
-
+    pgn = open(input_pgn)
     while True:
         game = chess.pgn.read_game(pgn)
-        if game is None: 
-            break
+        if game is None: break
         
-        # Determine player color
+        # Identify bot's color and game result
         white_player = game.headers.get("White", "")
-        black_player = game.headers.get("Black", "")
-        
-        if white_player == MY_USERNAME:
-            my_color = chess.WHITE
-        elif black_player == MY_USERNAME:
-            my_color = chess.BLACK
-        else:
-            continue
+        my_color = chess.WHITE if white_player == MY_USERNAME else chess.BLACK
+        result_val = get_result_value(game.headers.get("Result", "*"), my_color)
 
         board = game.board()
         for move in game.mainline_moves():
             if board.turn == my_color:
                 current_tensor = board_to_tensor(board)
-                current_move_idx = move_to_index(move)
                 X.append(current_tensor)
-                y.append(current_move_idx)
+                y_policy.append(move_to_index(move))
+                y_value.append(result_val)
                 
-                flipped_tensor, flipped_move_idx = augment_data(current_tensor, current_move_idx)
-                X.append(flipped_tensor)
-                y.append(flipped_move_idx)
+                # Flip for augmentation
+                flipped_t, flipped_m = augment_data(current_tensor, move_to_index(move))
+                X.append(flipped_t)
+                y_policy.append(flipped_m)
+                y_value.append(result_val)
             
             board.push(move)
-            
-        game_count += 1
-        if game_count % 100 == 0:
-            print(f"Processed {game_count} games... Current dataset size: {len(X)}")
 
-    print("Converting to tensors (this may take a moment)...")
-    X_tensor = torch.from_numpy(np.array(X))
-    y_tensor = torch.tensor(y, dtype=torch.long)
-    
-    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
-    
-    torch.save({'positions': X_tensor, 'moves': y_tensor}, OUTPUT_FILE)
-    print(f"Finished! Saved {len(X)} positions (Original + Augmented) to {OUTPUT_FILE}")
+    torch.save({
+        'positions': torch.from_numpy(np.array(X)), 
+        'moves': torch.tensor(y_policy, dtype=torch.long),
+        'values': torch.tensor(y_value, dtype=torch.float32)
+    }, output_file)
 
 if __name__ == "__main__":
     preprocess_games()

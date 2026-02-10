@@ -1,12 +1,9 @@
-# Virtual Environments
-.venv/
-
 # IDE settings
 .vscode/
 
-# Python cache files
-__pycache__/
+# Virtual environment
+.venv/
 
-# Training data
-data/
-models/
+# OS generated
+.DS_Store
+Thumbs.db

@@ -24,30 +24,20 @@ class ChessStyleBot(nn.Module):
         self.bn1 = nn.BatchNorm2d(128)
             
         self.res_blocks = nn.ModuleList([ResBlock(128) for _ in range(num_res_blocks)])
-        self.flatten_dim = 128 * 8 * 8 
-            
-        self.policy_head = nn.Linear(self.flatten_dim, 4096)
-        self.value_head = nn.Sequential(
-            nn.Linear(self.flatten_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Tanh()
-        )
+        
+        # Policy head (matches saved model weights)
+        self.policy_conv = nn.Conv2d(128, 2, kernel_size=1)
+        self.policy_bn = nn.BatchNorm2d(2)
+        self.fc = nn.Linear(2 * 8 * 8, 4096)
 
     def forward(self, x):
         x = F.relu(self.bn1(self.start_conv(x)))
         for block in self.res_blocks:
             x = block(x)
+        
+        # Policy head
+        policy = F.relu(self.policy_bn(self.policy_conv(x)))
+        policy = policy.view(-1, 2 * 8 * 8)
+        policy = self.fc(policy)
             
-        x = x.view(-1, self.flatten_dim)
-            
-        policy = self.policy_head(x)
-        value = self.value_head(x)
-            
-        return policy, value
+        return policy

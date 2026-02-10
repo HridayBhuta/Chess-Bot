@@ -1,3 +1,4 @@
+from email import policy
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -8,20 +9,20 @@ class ChessDataset(Dataset):
         print(f"Loading data from {pt_file}...")
         data = torch.load(pt_file)
         self.X = data['positions']
-        self.y = data['moves']
+        self.y_policy = data['moves']
         print(f"Dataset loaded: {len(self.X)} positions found (Augmented).")
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        return self.X[idx], self.y[idx]
+        return self.X[idx], self.y_policy[idx]
 
 def train_model():
-    BATCH_SIZE = 64
+    BATCH_SIZE = 256
     EPOCHS = 30
     LEARNING_RATE = 0.001
-    MODEL_SAVE_PATH = "my_style_bot.pth"
+    MODEL_SAVE_PATH = "models/my_style_bot.pth"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -37,38 +38,37 @@ def train_model():
 
     model = ChessStyleBot().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    criterion = nn.CrossEntropyLoss()
     
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3, factor=0.5)
 
     print(f"Starting training on {train_size} positions...")
+
+    policy_criterion = nn.CrossEntropyLoss()
     
     best_val_loss = float('inf')
 
     for epoch in range(EPOCHS):
         model.train()
         total_train_loss = 0
-        for batch_idx, (data, target) in enumerate(train_loader):
-            data, target = data.to(device), target.to(device)
+        for batch_idx, (data, target_policy) in enumerate(train_loader):
+            data, target_policy = data.to(device), target_policy.to(device)
             
             optimizer.zero_grad()
-            output = model(data)
-            loss = criterion(output, target)
+            policy_out = model(data)
+            
+            loss = policy_criterion(policy_out, target_policy)
             loss.backward()
             optimizer.step()
             
             total_train_loss += loss.item()
-            
-            if batch_idx % 100 == 0:
-                print(f"Epoch {epoch+1} | Batch {batch_idx}/{len(train_loader)} | Train Loss: {loss.item():.4f}")
 
         model.eval()
         total_val_loss = 0
         with torch.no_grad():
-            for data, target in val_loader:
-                data, target = data.to(device), target.to(device)
-                output = model(data)
-                val_loss = criterion(output, target)
+            for data, target_policy in val_loader:
+                data, target_policy = data.to(device), target_policy.to(device)
+                policy_out = model(data)
+                val_loss = policy_criterion(policy_out, target_policy)
                 total_val_loss += val_loss.item()
         
         avg_train_loss = total_train_loss / len(train_loader)

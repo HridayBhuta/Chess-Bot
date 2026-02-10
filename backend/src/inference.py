@@ -1,5 +1,6 @@
 import torch
 import chess
+import chess.pgn
 import numpy as np
 from model import ChessStyleBot
 from preprocess import board_to_tensor
@@ -7,6 +8,8 @@ from preprocess import board_to_tensor
 def load_trained_model(model_path, device):
     model = ChessStyleBot()
     model.load_state_dict(torch.load(model_path, map_location=device))
+    model.to(device)
+    model.eval()
     return model
 
 def get_bot_move(board, model, device):
@@ -21,8 +24,8 @@ def get_bot_move(board, model, device):
     board_tensor = board_tensor.to(device)
     
     with torch.no_grad():
-        outputs = model(board_tensor)
-        probabilities = torch.softmax(outputs, dim=1).cpu().numpy()[0]
+        policy_out = model(board_tensor)
+        probabilities = torch.softmax(policy_out, dim=1).cpu().numpy()[0]
 
     legal_moves = list(board.legal_moves)
     legal_indices = []
@@ -51,6 +54,33 @@ def get_bot_move(board, model, device):
             move.promotion = chess.QUEEN
             
     return move
+
+def play_and_save(model, device):
+    board = chess.Board()
+    game = chess.pgn.Game()
+    game.headers["White"] = "Human"
+    game.headers["Black"] = "ChessBot"
+    node = game
+
+    while not board.is_game_over():
+        if board.turn == chess.WHITE:
+            move_str = input("Your move: ")
+            try:
+                move = chess.Move.from_uci(move_str)
+                if move not in board.legal_moves:
+                    print("Illegal move.")
+                    continue
+            except:
+                print("Invalid UCI move.")
+                continue
+        else:
+            move = get_bot_move(board, model, device)
+            print(f"Bot plays: {move}")
+        board.push(move)
+        node = node.add_main_variation(move)
+
+    with open("data/user_games.pgn", "a") as f:
+        f.write(str(game) + "\n\n")
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

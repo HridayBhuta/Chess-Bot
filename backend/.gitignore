@@ -1,0 +1,16 @@
+# Virtual Environments
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Training data (too large for git)
+data/
+
+# Model files — keep ONNX, ignore PyTorch checkpoints and Zone.Identifier
+models/*.pth
+models/*:Zone.Identifier
+
+# Jupyter
+.ipynb_checkpoints/
