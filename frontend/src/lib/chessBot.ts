@@ -4,21 +4,32 @@ import { Chess } from 'chess.js';
 
 let session: any = null;
 let loadingPromise: Promise<void> | null = null;
+let ortModule: any = null;
+
+function getOrt(): any {
+  if (ortModule) return ortModule;
+  ortModule = (window as any).ort;
+  if (!ortModule) throw new Error('ONNX Runtime not loaded');
+  return ortModule;
+}
 
 export async function loadModel(): Promise<void> {
   if (session) return;
   if (loadingPromise) return loadingPromise;
 
   loadingPromise = (async () => {
-    // Wait for the script tag to load ort into window
-    let retries = 0;
-    while (!(window as any).ort && retries < 100) {
-      await new Promise(r => setTimeout(r, 100));
-      retries++;
+    // Load the ONNX Runtime script dynamically
+    if (!(window as any).ort) {
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = '/ort.wasm.min.js';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load ONNX Runtime script'));
+        document.head.appendChild(script);
+      });
     }
-    const ort = (window as any).ort;
-    if (!ort) throw new Error('ONNX Runtime failed to load');
 
+    const ort = getOrt();
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.wasmPaths = '/';
 
@@ -79,7 +90,7 @@ export async function getBotMove(chess: Chess): Promise<string | null> {
   if (!session) await loadModel();
   if (!session) return null;
 
-  const ort = (window as any).ort;
+  const ort = getOrt();
   const inputData = boardToTensor(chess);
   const inputTensor = new ort.Tensor('float32', inputData, [1, 13, 8, 8]);
 

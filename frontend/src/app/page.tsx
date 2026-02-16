@@ -15,7 +15,7 @@ const ChessGame = dynamic(() => import('@/components/ChessGame'), {
 export default function Home() {
   return (
     <main className="main">
-      <h1>Chess Game</h1>
+      <h1 className="page-title">Chess Game</h1>
       <ChessGame />
     </main>
   );

@@ -5,18 +5,23 @@ import { Chessboard } from 'react-chessboard';
 import { Chess, Square } from 'chess.js';
 import { loadModel, getBotMove } from '@/lib/chessBot';
 
+const PIECE_SYMBOLS: Record<string, string> = {
+  p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚',
+};
+
 export default function ChessGame() {
   const [game, setGame] = useState(new Chess());
   const [status, setStatus] = useState('Loading model...');
   const [isThinking, setIsThinking] = useState(false);
-  const [moveHistory, setMoveHistory] = useState<string[]>([]);
   const [modelLoaded, setModelLoaded] = useState(false);
+  const [capturedWhite, setCapturedWhite] = useState<string[]>([]);
+  const [capturedBlack, setCapturedBlack] = useState<string[]>([]);
 
   useEffect(() => {
     loadModel()
       .then(() => {
         setModelLoaded(true);
-        setStatus('Your turn');
+        setStatus('Your Turn (White)');
       })
       .catch((err) => {
         setStatus('Failed to load model');
@@ -24,11 +29,25 @@ export default function ChessGame() {
       });
   }, []);
 
+  function updateCaptured(g: Chess) {
+    const white: string[] = [];
+    const black: string[] = [];
+    for (const move of g.history({ verbose: true })) {
+      if (move.captured) {
+        const sym = PIECE_SYMBOLS[move.captured] || move.captured;
+        if (move.color === 'w') black.push(sym);
+        else white.push(sym);
+      }
+    }
+    setCapturedWhite(white);
+    setCapturedBlack(black);
+  }
+
   const makeBotMove = useCallback(async (currentGame: Chess) => {
     if (currentGame.isGameOver()) return;
 
     setIsThinking(true);
-    setStatus('Thinking...');
+    setStatus('AI is thinking...');
 
     await new Promise((r) => setTimeout(r, 200));
 
@@ -37,8 +56,11 @@ export default function ChessGame() {
     if (botMove) {
       try {
         currentGame.move(botMove);
-        setGame(new Chess(currentGame.fen()));
-        setMoveHistory((prev) => [...prev, botMove]);
+        const newGame = new Chess(currentGame.fen());
+
+        // Rebuild history for captured tracking
+        setGame(newGame);
+        updateCaptured(currentGame);
 
         if (currentGame.isGameOver()) {
           setStatus(
@@ -49,10 +71,10 @@ export default function ChessGame() {
               : 'Game over'
           );
         } else {
-          setStatus('Your turn');
+          setStatus('Your Turn (White)');
         }
       } catch {
-        setStatus('Your turn');
+        setStatus('Your Turn (White)');
       }
     }
 
@@ -63,29 +85,42 @@ export default function ChessGame() {
     if (!modelLoaded || isThinking || game.turn() !== 'w') return false;
 
     try {
-      const move = game.move({
+      const gameCopy = new Chess(game.fen());
+      // Copy move history for captured tracking
+      const prevHistory = game.history({ verbose: true });
+
+      const move = gameCopy.move({
         from: sourceSquare,
         to: targetSquare,
         promotion: 'q',
       });
       if (!move) return false;
 
-      const newGame = new Chess(game.fen());
-      setGame(newGame);
-      setMoveHistory((prev) => [...prev, move.san]);
+      setGame(new Chess(gameCopy.fen()));
 
-      if (newGame.isGameOver()) {
+      // Update captured pieces
+      const white: string[] = [...capturedWhite];
+      const black: string[] = [...capturedBlack];
+      if (move.captured) {
+        const sym = PIECE_SYMBOLS[move.captured] || move.captured;
+        if (move.color === 'w') black.push(sym);
+        else white.push(sym);
+      }
+      setCapturedWhite(white);
+      setCapturedBlack(black);
+
+      if (gameCopy.isGameOver()) {
         setStatus(
-          newGame.isCheckmate()
+          gameCopy.isCheckmate()
             ? 'Checkmate! You win!'
-            : newGame.isDraw()
+            : gameCopy.isDraw()
             ? 'Draw!'
             : 'Game over'
         );
         return true;
       }
 
-      setTimeout(() => makeBotMove(newGame), 100);
+      setTimeout(() => makeBotMove(gameCopy), 100);
       return true;
     } catch {
       return false;
@@ -94,27 +129,26 @@ export default function ChessGame() {
 
   function resetGame() {
     setGame(new Chess());
-    setMoveHistory([]);
-    setStatus('Your turn');
+    setCapturedWhite([]);
+    setCapturedBlack([]);
+    setStatus('Your Turn (White)');
   }
 
-  // Build paired move rows for display
-  const moveRows: { num: number; white: string; black?: string }[] = [];
-  for (let i = 0; i < moveHistory.length; i += 2) {
-    moveRows.push({
-      num: Math.floor(i / 2) + 1,
-      white: moveHistory[i],
-      black: moveHistory[i + 1],
-    });
-  }
+  const turnIcon = game.turn() === 'w' ? '♟' : '♛';
 
   return (
-    <div className="game-wrapper">
+    <div className="card">
+      <div className="status-badge">
+        <span className={isThinking ? 'pulse' : ''}>
+          {turnIcon} {status}
+        </span>
+      </div>
+
       <div className="board-area">
         <Chessboard
           position={game.fen()}
           onPieceDrop={onDrop}
-          boardWidth={480}
+          boardWidth={560}
           customBoardStyle={{
             borderRadius: '4px',
             boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
@@ -124,29 +158,24 @@ export default function ChessGame() {
         />
       </div>
 
-      <div className="side-panel">
-        <div className="status-bar">
-          <span className={isThinking ? 'pulse' : ''}>{status}</span>
+      <div className="captured-row">
+        <div className="captured-box">
+          <span className="captured-label">♟ White Captured</span>
+          <span className="captured-pieces">
+            {capturedWhite.length > 0 ? capturedWhite.join(' ') : 'None'}
+          </span>
         </div>
-
-        <div className="move-list">
-          <table>
-            <tbody>
-              {moveRows.map((row) => (
-                <tr key={row.num}>
-                  <td className="move-num">{row.num}.</td>
-                  <td className="move-white">{row.white}</td>
-                  <td className="move-black">{row.black ?? ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="captured-box">
+          <span className="captured-label">♛ Black Captured</span>
+          <span className="captured-pieces">
+            {capturedBlack.length > 0 ? capturedBlack.join(' ') : 'None'}
+          </span>
         </div>
-
-        <button onClick={resetGame} className="new-game-btn">
-          New Game
-        </button>
       </div>
+
+      <button onClick={resetGame} className="reset-btn">
+        ↻ RESET BOARD
+      </button>
     </div>
   );
 }
