@@ -8,8 +8,10 @@ __pycache__/
 # Training data (too large for git)
 data/
 
-# Model files — keep ONNX, ignore PyTorch checkpoints and Zone.Identifier
+# Model files — ignore local copies (frontend/public/models/ is used for deployment)
 models/*.pth
+models/*.onnx
+models/*.onnx.data
 models/*:Zone.Identifier
 
 # Jupyter

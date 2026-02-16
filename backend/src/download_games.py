@@ -1,8 +1,13 @@
+import os
+from pathlib import Path
 import requests
 import time
+from dotenv import load_dotenv
 
-USERNAME = "qwerty592"
-CONTACT_EMAIL = "bhutahriday@gmail.com"
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+USERNAME = os.environ.get("CHESS_USERNAME", "qwerty592")
+CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "")
 OUTPUT_FILE = f"{USERNAME}_games.pgn"
 
 headers = {
