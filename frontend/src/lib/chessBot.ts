@@ -33,7 +33,7 @@ export async function loadModel(): Promise<void> {
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.wasmPaths = '/';
 
-    const response = await fetch('/models/my_style_bot.onnx');
+    const response = await fetch('/models/my_style_bot.onnx?t=' + Date.now());
     if (!response.ok) throw new Error(`Model fetch failed: ${response.status}`);
     const buf = await response.arrayBuffer();
 
@@ -136,4 +136,31 @@ export async function getBotMove(chess: Chess): Promise<string | null> {
   }
 
   return bestMove;
+}
+
+/**
+ * Send completed game to the RL backend for a policy-gradient update.
+ * Returns the server response (status, reward, loss, etc.).
+ */
+export async function submitGameForLearning(
+  movesUci: string[],
+  result: string,
+  botColor: string = 'black'
+): Promise<{ status: string; reward?: number; loss?: number; positions_trained?: number; reason?: string }> {
+  const res = await fetch('/api/learn', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ moves: movesUci, result, bot_color: botColor }),
+  });
+  if (!res.ok) throw new Error(`RL server error: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * Force-reload the ONNX model so the browser picks up updated weights.
+ */
+export async function reloadModel(): Promise<void> {
+  session = null;
+  loadingPromise = null;
+  await loadModel();
 }

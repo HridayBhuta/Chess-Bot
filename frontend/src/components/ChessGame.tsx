@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Chessboard } from 'react-chessboard';
 import { Chess, Square } from 'chess.js';
-import { loadModel, getBotMove } from '@/lib/chessBot';
+import { loadModel, getBotMove, submitGameForLearning, reloadModel } from '@/lib/chessBot';
 
 const PIECE_SYMBOLS: Record<string, string> = {
   p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚',
@@ -16,7 +16,8 @@ export default function ChessGame() {
   const [modelLoaded, setModelLoaded] = useState(false);
   const [capturedWhite, setCapturedWhite] = useState<string[]>([]);
   const [capturedBlack, setCapturedBlack] = useState<string[]>([]);
-
+  const [moveHistory, setMoveHistory] = useState<string[]>([]);
+  const [learningStatus, setLearningStatus] = useState<string | null>(null);
   useEffect(() => {
     loadModel()
       .then(() => {
@@ -43,7 +44,30 @@ export default function ChessGame() {
     setCapturedBlack(black);
   }
 
-  const makeBotMove = useCallback(async (currentGame: Chess) => {
+  function getGameResult(g: Chess): string | null {
+    if (!g.isGameOver()) return null;
+    if (g.isCheckmate()) return g.turn() === 'w' ? '0-1' : '1-0';
+    return '1/2-1/2';
+  }
+
+  async function handleGameOver(allMoves: string[], result: string) {
+    setLearningStatus('Learning from this game...');
+    try {
+      const resp = await submitGameForLearning(allMoves, result, 'black');
+      if (resp.status === 'updated') {
+        setLearningStatus(`Learned! (reward: ${resp.reward}, loss: ${resp.loss}). Reloading model...`);
+        await reloadModel();
+        setLearningStatus('Model updated — next game will use improved weights.');
+      } else {
+        setLearningStatus(`Skipped learning: ${resp.reason || 'draw'}`);
+      }
+    } catch (err) {
+      console.error('RL learning failed:', err);
+      setLearningStatus('Learning unavailable (server offline?)');
+    }
+  }
+
+  const makeBotMove = useCallback(async (currentGame: Chess, currentMoves: string[]) => {
     if (currentGame.isGameOver()) return;
 
     setIsThinking(true);
@@ -55,7 +79,11 @@ export default function ChessGame() {
 
     if (botMove) {
       try {
-        currentGame.move(botMove);
+        const moveObj = currentGame.move(botMove);
+        const uci = moveObj.from + moveObj.to + (moveObj.promotion || '');
+        const updatedMoves = [...currentMoves, uci];
+        setMoveHistory(updatedMoves);
+
         const newGame = new Chess(currentGame.fen());
 
         // Rebuild history for captured tracking
@@ -63,6 +91,7 @@ export default function ChessGame() {
         updateCaptured(currentGame);
 
         if (currentGame.isGameOver()) {
+          const result = getGameResult(currentGame)!;
           setStatus(
             currentGame.isCheckmate()
               ? 'Checkmate! Bot wins!'
@@ -70,6 +99,7 @@ export default function ChessGame() {
               ? 'Draw!'
               : 'Game over'
           );
+          handleGameOver(updatedMoves, result);
         } else {
           setStatus('Your Turn (White)');
         }
@@ -86,8 +116,6 @@ export default function ChessGame() {
 
     try {
       const gameCopy = new Chess(game.fen());
-      // Copy move history for captured tracking
-      const prevHistory = game.history({ verbose: true });
 
       const move = gameCopy.move({
         from: sourceSquare,
@@ -95,6 +123,10 @@ export default function ChessGame() {
         promotion: 'q',
       });
       if (!move) return false;
+
+      const uci = move.from + move.to + (move.promotion || '');
+      const updatedMoves = [...moveHistory, uci];
+      setMoveHistory(updatedMoves);
 
       setGame(new Chess(gameCopy.fen()));
 
@@ -110,6 +142,7 @@ export default function ChessGame() {
       setCapturedBlack(black);
 
       if (gameCopy.isGameOver()) {
+        const result = getGameResult(gameCopy)!;
         setStatus(
           gameCopy.isCheckmate()
             ? 'Checkmate! You win!'
@@ -117,10 +150,11 @@ export default function ChessGame() {
             ? 'Draw!'
             : 'Game over'
         );
+        handleGameOver(updatedMoves, result);
         return true;
       }
 
-      setTimeout(() => makeBotMove(gameCopy), 100);
+      setTimeout(() => makeBotMove(gameCopy, updatedMoves), 100);
       return true;
     } catch {
       return false;
@@ -131,6 +165,8 @@ export default function ChessGame() {
     setGame(new Chess());
     setCapturedWhite([]);
     setCapturedBlack([]);
+    setMoveHistory([]);
+    setLearningStatus(null);
     setStatus('Your Turn (White)');
   }
 
@@ -176,6 +212,20 @@ export default function ChessGame() {
       <button onClick={resetGame} className="reset-btn">
         ↻ RESET BOARD
       </button>
+
+      {learningStatus && (
+        <div className="learning-status" style={{
+          marginTop: '12px',
+          padding: '8px 16px',
+          borderRadius: '6px',
+          background: 'rgba(255,255,255,0.08)',
+          fontSize: '0.85rem',
+          textAlign: 'center',
+          color: '#ccc',
+        }}>
+          {learningStatus}
+        </div>
+      )}
     </div>
   );
 }
