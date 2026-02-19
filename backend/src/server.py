@@ -57,12 +57,13 @@ class GamePayload(BaseModel):
             raise ValueError("bot_color must be 'white' or 'black'")
         return v
 
-
 @app.post("/api/learn")
 async def learn(payload: GamePayload):
+    print("Received game for training")
     result = train_on_game(
         moves_uci=payload.moves,
         result=payload.result,
         bot_color=payload.bot_color,
     )
+    print("Training complete")
     return result
