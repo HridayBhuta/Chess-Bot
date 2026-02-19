@@ -20,12 +20,19 @@ from rl_trainer import train_on_game  # noqa: E402
 
 app = FastAPI(title="Chess Bot RL Server")
 
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+# Allow the Vercel deployment origin if set via environment variable
+_vercel_url = os.environ.get("FRONTEND_URL")
+if _vercel_url:
+    ALLOWED_ORIGINS.append(_vercel_url.rstrip("/"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["POST"],
     allow_headers=["Content-Type"],
 )
