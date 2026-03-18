@@ -20,6 +20,10 @@ from rl_trainer import train_on_game  # noqa: E402
 
 app = FastAPI(title="Chess Bot RL Server")
 
+@app.get("/ping")
+async def ping():
+    return {"status": "alive"}
+
 ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
